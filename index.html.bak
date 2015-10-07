@@ -16,9 +16,9 @@
 	</head>
 	<body>
 
-		<script src="http://threejs.org//build/three.min.js"></script>
+		<script src="three.min.js"></script>
 
-		<script src="http://threejs.org/examples/js/libs/stats.min.js"></script>
+		<script src="stats.min.js"></script>
 
 		<script>
 
