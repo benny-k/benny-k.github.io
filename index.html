@@ -2,143 +2,234 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgl - interactive lines</title>
+		<title>three.js webgl - interactive - buffergeometry</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
 			body {
-				font-family: Monospace;
-				background-color: #f0f0f0;
+				color: #cccccc;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+
+				background-color: #050505;
 				margin: 0px;
 				overflow: hidden;
 			}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+			}
+
+			a {
+
+				color: #0080ff;
+			}
+
 		</style>
 	</head>
 	<body>
 
-		<script src="three.min.js"></script>
+		<div id="container"></div>
+		<div id="info"><a href="http://threejs.org" target="_blank">three.js</a> webgl - interactive - buffergeometry</div>
 
+		<script src=three.min.js"></script>
+
+		<script src="Detector.js"></script>
 		<script src="stats.min.js"></script>
 
 		<script>
 
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
 			var container, stats;
-			var camera, scene, raycaster, renderer, parentTransform, sphereInter;
 
-			var mouse = new THREE.Vector2();
-			var radius = 100, theta = 0;
+			var camera, scene, renderer;
 
-			var currentIntersected;
+			var raycaster, mouse;
+
+			var mesh, line;
 
 			init();
 			animate();
 
 			function init() {
 
-				container = document.createElement( 'div' );
-				document.body.appendChild( container );
+				container = document.getElementById( 'container' );
 
-				var info = document.createElement( 'div' );
-				info.style.position = 'absolute';
-				info.style.top = '10px';
-				info.style.width = '100%';
-				info.style.textAlign = 'center';
-				info.innerHTML = '<a href="http://threejs.org" target="_blank">three.js</a> webgl - interactive lines';
-				container.appendChild( info );
+				//
 
-				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 10000 );
+				camera = new THREE.PerspectiveCamera( 27, window.innerWidth / window.innerHeight, 1, 3500 );
+				camera.position.z = 2750;
 
 				scene = new THREE.Scene();
+				scene.fog = new THREE.Fog( 0x050505, 2000, 3500 );
 
-				var geometry = new THREE.SphereGeometry( 5 );
-				var material = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
+				//
 
-				sphereInter = new THREE.Mesh( geometry, material );
-				sphereInter.visible = false;
-				scene.add( sphereInter );
+				scene.add( new THREE.AmbientLight( 0x444444 ) );
 
-				var geometry = new THREE.Geometry();
+				var light1 = new THREE.DirectionalLight( 0xffffff, 0.5 );
+				light1.position.set( 1, 1, 1 );
+				scene.add( light1 );
 
-				var point = new THREE.Vector3();
-				var direction = new THREE.Vector3();
+				var light2 = new THREE.DirectionalLight( 0xffffff, 1.5 );
+				light2.position.set( 0, -1, 0 );
+				scene.add( light2 );
 
-				for ( var i = 0; i < 50; i ++ ) {
+				//
 
-					direction.x += Math.random() - 0.5;
-					direction.y += Math.random() - 0.5;
-					direction.z += Math.random() - 0.5;
-					direction.normalize().multiplyScalar( 10 );
+				var triangles = 5000;
 
-					point.add( direction );
+				var geometry = new THREE.BufferGeometry();
 
-					geometry.vertices.push( point.clone() );
+				var positions = new Float32Array( triangles * 3 * 3 );
+				var normals = new Float32Array( triangles * 3 * 3 );
+				var colors = new Float32Array( triangles * 3 * 3 );
+
+				var color = new THREE.Color();
+
+				var n = 800, n2 = n/2;	// triangles spread in the cube
+				var d = 120, d2 = d/2;	// individual triangle size
+
+				var pA = new THREE.Vector3();
+				var pB = new THREE.Vector3();
+				var pC = new THREE.Vector3();
+
+				var cb = new THREE.Vector3();
+				var ab = new THREE.Vector3();
+
+				for ( var i = 0; i < positions.length; i += 9 ) {
+
+					// positions
+
+					var x = Math.random() * n - n2;
+					var y = Math.random() * n - n2;
+					var z = Math.random() * n - n2;
+
+					var ax = x + Math.random() * d - d2;
+					var ay = y + Math.random() * d - d2;
+					var az = z + Math.random() * d - d2;
+
+					var bx = x + Math.random() * d - d2;
+					var by = y + Math.random() * d - d2;
+					var bz = z + Math.random() * d - d2;
+
+					var cx = x + Math.random() * d - d2;
+					var cy = y + Math.random() * d - d2;
+					var cz = z + Math.random() * d - d2;
+
+					positions[ i ]     = ax;
+					positions[ i + 1 ] = ay;
+					positions[ i + 2 ] = az;
+
+					positions[ i + 3 ] = bx;
+					positions[ i + 4 ] = by;
+					positions[ i + 5 ] = bz;
+
+					positions[ i + 6 ] = cx;
+					positions[ i + 7 ] = cy;
+					positions[ i + 8 ] = cz;
+
+					// flat face normals
+
+					pA.set( ax, ay, az );
+					pB.set( bx, by, bz );
+					pC.set( cx, cy, cz );
+
+					cb.subVectors( pC, pB );
+					ab.subVectors( pA, pB );
+					cb.cross( ab );
+
+					cb.normalize();
+
+					var nx = cb.x;
+					var ny = cb.y;
+					var nz = cb.z;
+
+					normals[ i ]     = nx;
+					normals[ i + 1 ] = ny;
+					normals[ i + 2 ] = nz;
+
+					normals[ i + 3 ] = nx;
+					normals[ i + 4 ] = ny;
+					normals[ i + 5 ] = nz;
+
+					normals[ i + 6 ] = nx;
+					normals[ i + 7 ] = ny;
+					normals[ i + 8 ] = nz;
+
+					// colors
+
+					var vx = ( x / n ) + 0.5;
+					var vy = ( y / n ) + 0.5;
+					var vz = ( z / n ) + 0.5;
+
+					color.setRGB( vx, vy, vz );
+
+					colors[ i ]     = color.r;
+					colors[ i + 1 ] = color.g;
+					colors[ i + 2 ] = color.b;
+
+					colors[ i + 3 ] = color.r;
+					colors[ i + 4 ] = color.g;
+					colors[ i + 5 ] = color.b;
+
+					colors[ i + 6 ] = color.r;
+					colors[ i + 7 ] = color.g;
+					colors[ i + 8 ] = color.b;
 
 				}
 
-				parentTransform = new THREE.Object3D();
-				parentTransform.position.x = Math.random() * 40 - 20;
-				parentTransform.position.y = Math.random() * 40 - 20;
-				parentTransform.position.z = Math.random() * 40 - 20;
+				geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+				geometry.addAttribute( 'normal', new THREE.BufferAttribute( normals, 3 ) );
+				geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
 
-				parentTransform.rotation.x = Math.random() * 2 * Math.PI;
-				parentTransform.rotation.y = Math.random() * 2 * Math.PI;
-				parentTransform.rotation.z = Math.random() * 2 * Math.PI;
+				geometry.computeBoundingSphere();
 
-				parentTransform.scale.x = Math.random() + 0.5;
-				parentTransform.scale.y = Math.random() + 0.5;
-				parentTransform.scale.z = Math.random() + 0.5;
+				var material = new THREE.MeshPhongMaterial( {
+						color: 0xaaaaaa, specular: 0xffffff, shininess: 250,
+						side: THREE.DoubleSide, vertexColors: THREE.VertexColors
+				} );
 
-				for ( var i = 0; i < 50; i ++ ) {
+				mesh = new THREE.Mesh( geometry, material );
+				scene.add( mesh );
 
-					var object;
-
-					if ( Math.random() > 0.5 ) {
-
-						object = new THREE.Line( geometry );
-
-					} else {
-
-						object = new THREE.LineSegments( geometry );
-
-					}
-
-					object.position.x = Math.random() * 400 - 200;
-					object.position.y = Math.random() * 400 - 200;
-					object.position.z = Math.random() * 400 - 200;
-
-					object.rotation.x = Math.random() * 2 * Math.PI;
-					object.rotation.y = Math.random() * 2 * Math.PI;
-					object.rotation.z = Math.random() * 2 * Math.PI;
-
-					object.scale.x = Math.random() + 0.5;
-					object.scale.y = Math.random() + 0.5;
-					object.scale.z = Math.random() + 0.5;
-
-					parentTransform.add( object );
-
-				}
-
-				scene.add( parentTransform );
+				//
 
 				raycaster = new THREE.Raycaster();
-				raycaster.linePrecision = 3;
 
-				renderer = new THREE.WebGLRenderer( { antialias: true } );
-				renderer.setClearColor( 0xf0f0f0 );
+				mouse = new THREE.Vector2();
+
+				var geometry = new THREE.BufferGeometry();
+				geometry.addAttribute( 'position', new THREE.BufferAttribute( new Float32Array( 4 * 3 ), 3 ) );
+
+				var material = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true } );
+
+				line = new THREE.Line( geometry, material );
+				scene.add( line );
+
+				//
+
+				renderer = new THREE.WebGLRenderer( { antialias: false } );
+				renderer.setClearColor( scene.fog.color );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				container.appendChild(renderer.domElement);
+				container.appendChild( renderer.domElement );
+
+				//
 
 				stats = new Stats();
 				stats.domElement.style.position = 'absolute';
 				stats.domElement.style.top = '0px';
 				container.appendChild( stats.domElement );
 
-				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
-
 				//
 
 				window.addEventListener( 'resize', onWindowResize, false );
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
 
 			}
 
@@ -173,46 +264,37 @@
 
 			function render() {
 
-				theta += 0.1;
+				var time = Date.now() * 0.001;
 
-				camera.position.x = radius * Math.sin( THREE.Math.degToRad( theta ) );
-				camera.position.y = radius * Math.sin( THREE.Math.degToRad( theta ) );
-				camera.position.z = radius * Math.cos( THREE.Math.degToRad( theta ) );
-				camera.lookAt( scene.position );
-
-				camera.updateMatrixWorld();
-
-				// find intersections
+				mesh.rotation.x = time * 0.15;
+				mesh.rotation.y = time * 0.25;
 
 				raycaster.setFromCamera( mouse, camera );
 
-				var intersects = raycaster.intersectObjects( parentTransform.children, true);
+				var intersects = raycaster.intersectObject( mesh );
 
 				if ( intersects.length > 0 ) {
 
-					if ( currentIntersected !== undefined ) {
+					var intersect = intersects[ 0 ];
+					var face = intersect.face;
 
-						currentIntersected.material.linewidth = 1;
+					var linePosition = line.geometry.attributes.position;
+					var meshPosition = mesh.geometry.attributes.position;
 
-					}
+					linePosition.copyAt( 0, meshPosition, face.a );
+					linePosition.copyAt( 1, meshPosition, face.b );
+					linePosition.copyAt( 2, meshPosition, face.c );
+					linePosition.copyAt( 3, meshPosition, face.a );
 
-					currentIntersected = intersects[ 0 ].object;
-					currentIntersected.material.linewidth = 5;
+					mesh.updateMatrix();
 
-					sphereInter.visible = true;
-					sphereInter.position.copy( intersects[ 0 ].point );
+					line.geometry.applyMatrix( mesh.matrix );
+
+					line.visible = true;
 
 				} else {
 
-					if ( currentIntersected !== undefined ) {
-
-						currentIntersected.material.linewidth = 1;
-
-					}
-
-					currentIntersected = undefined;
-
-					sphereInter.visible = false;
+					line.visible = false;
 
 				}
 
