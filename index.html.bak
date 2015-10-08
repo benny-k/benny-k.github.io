@@ -1,219 +1,189 @@
 
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-		<title>three.js - kinect</title>
+		<title>three.js webgl - interactive particles</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
 			body {
-				font-family: Monospace;
+				color: #ffffff;
 				background-color: #000000;
 				margin: 0px;
 				overflow: hidden;
 			}
-
 			#info {
-				color: #ffffff;
-
+				position: absolute;
+				top: 0px;
+				width: 100%;
+				padding: 5px;
 				font-family: Monospace;
 				font-size: 13px;
 				text-align: center;
 				font-weight: bold;
-
-				position: absolute;
-				top: 5px; width: 100%;
 			}
-
 			a {
-
-				color: #0040ff;
-
+				color: #fff;
 			}
 		</style>
 	</head>
+
 	<body>
+		<div id="container"></div>
+		<div id="info"><a href="http://threejs.org" target="_blank">three.js</a> webgl - interactive - particles</div>
 
 		<script src="three.min.js"></script>
-
-		<script src="dat.gui.min.js"></script>
 
 		<script src="Detector.js"></script>
 		<script src="stats.min.js"></script>
 
-		<script id="vs" type="x-shader/x-vertex">
+		<script type="x-shader/x-vertex" id="vertexshader">
 
-			uniform sampler2D map;
+			attribute float size;
+			attribute vec3 customColor;
 
-			uniform float width;
-			uniform float height;
-			uniform float nearClipping, farClipping;
-
-			uniform float pointSize;
-			uniform float zOffset;
-
-			varying vec2 vUv;
-
-			const float XtoZ = 1.11146; // tan( 1.0144686 / 2.0 ) * 2.0;
-			const float YtoZ = 0.83359; // tan( 0.7898090 / 2.0 ) * 2.0;
+			varying vec3 vColor;
 
 			void main() {
 
-				vUv = vec2( position.x / width, position.y / height );
+				vColor = customColor;
 
-				vec4 color = texture2D( map, vUv );
-				float depth = ( color.r + color.g + color.b ) / 3.0;
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
 
-				// Projection code by @kcmic
+				gl_PointSize = size * ( 300.0 / length( mvPosition.xyz ) );
 
-				float z = ( 1.0 - depth ) * (farClipping - nearClipping) + nearClipping;
-
-				vec4 pos = vec4(
-					( position.x / width - 0.5 ) * z * XtoZ,
-					( position.y / height - 0.5 ) * z * YtoZ,
-					- z + zOffset,
-					1.0);
-
-				gl_PointSize = pointSize;
-				gl_Position = projectionMatrix * modelViewMatrix * pos;
+				gl_Position = projectionMatrix * mvPosition;
 
 			}
 
 		</script>
 
-		<script id="fs" type="x-shader/x-fragment">
+		<script type="x-shader/x-fragment" id="fragmentshader">
 
-			uniform sampler2D map;
+			uniform vec3 color;
+			uniform sampler2D texture;
 
-			varying vec2 vUv;
+			varying vec3 vColor;
 
 			void main() {
 
-				vec4 color = texture2D( map, vUv );
-				gl_FragColor = vec4( color.r, color.g, color.b, 0.2 );
+				gl_FragColor = vec4( color * vColor, 1.0 );
+
+				gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+
+				if ( gl_FragColor.a < ALPHATEST ) discard;
 
 			}
 
 		</script>
+
 
 		<script>
 
-			var container;
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 
-			var scene, camera, light, renderer;
-			var geometry, cube, mesh, material;
-			var mouse, center;
-			var stats;
+			var renderer, scene, camera, stats;
 
-			var video, texture;
+			var particles, uniforms;
 
-			if ( Detector.webgl ) {
+			var PARTICLE_SIZE = 20;
 
-				init();
-				animate();
+			var raycaster, intersects;
+			var mouse, INTERSECTED;
 
-			} else {
-
-				document.body.appendChild( Detector.getWebGLErrorMessage() );
-
-			}
+			init();
+			animate();
 
 			function init() {
 
-				container = document.createElement( 'div' );
-				document.body.appendChild( container );
-
-				var info = document.createElement( 'div' );
-				info.id = 'info';
-				info.innerHTML = '<a href="http://threejs.org" target="_blank">three.js</a> - kinect';
-				document.body.appendChild( info );
-
-				stats = new Stats();
-				stats.domElement.style.position = 'absolute';
-				stats.domElement.style.top = '0px';
-				// container.appendChild( stats.domElement );
-
-				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 10000 );
-				camera.position.set( 0, 0, 500 );
+				container = document.getElementById( 'container' );
 
 				scene = new THREE.Scene();
-				center = new THREE.Vector3();
-				center.z = - 1000;
 
-				video = document.createElement( 'video' );
-				video.addEventListener( 'loadedmetadata', function ( event ) {
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
+				camera.position.z = 250;
 
-					texture = new THREE.VideoTexture( video );
-					texture.minFilter = THREE.NearestFilter;
+				//
 
-					var width = 640, height = 480;
-					var nearClipping = 850, farClipping = 4000;
+				var geometry1 = new THREE.BoxGeometry( 200, 200, 200, 16, 16, 16 );
+				var vertices = geometry1.vertices;
 
-					geometry = new THREE.BufferGeometry();
+				var positions = new Float32Array( vertices.length * 3 );
+				var colors = new Float32Array( vertices.length * 3 );
+				var sizes = new Float32Array( vertices.length );
 
-					var vertices = new Float32Array( width * height * 3 );
+				var vertex;
+				var color = new THREE.Color();
 
-					for ( var i = 0, j = 0, l = vertices.length; i < l; i += 3, j ++ ) {
+				for ( var i = 0, l = vertices.length; i < l; i ++ ) {
 
-						vertices[ i ] = j % width;
-						vertices[ i + 1 ] = Math.floor( j / width );
+					vertex = vertices[ i ];
+					vertex.toArray( positions, i * 3 );
 
-					}
+					color.setHSL( 0.01 + 0.1 * ( i / l ), 1.0, 0.5 )
+					color.toArray( colors, i * 3 );
 
-					geometry.addAttribute( 'position', new THREE.BufferAttribute( vertices, 3 ) );
+					sizes[ i ] = PARTICLE_SIZE * 0.5;
 
-					material = new THREE.ShaderMaterial( {
+				}
 
-						uniforms: {
+				var geometry = new THREE.BufferGeometry();
+				geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+				geometry.addAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
+				geometry.addAttribute( 'size', new THREE.BufferAttribute( sizes, 1 ) );
 
-							"map": { type: "t", value: texture },
-							"width": { type: "f", value: width },
-							"height": { type: "f", value: height },
-							"nearClipping": { type: "f", value: nearClipping },
-							"farClipping": { type: "f", value: farClipping },
+				//
 
-							"pointSize": { type: "f", value: 2 },
-							"zOffset": { type: "f", value: 1000 }
+				var material = new THREE.ShaderMaterial( {
 
-						},
-						vertexShader: document.getElementById( 'vs' ).textContent,
-						fragmentShader: document.getElementById( 'fs' ).textContent,
-						blending: THREE.AdditiveBlending,
-						depthTest: false, depthWrite: false,
-						transparent: true
+					uniforms: {
+						color:   { type: "c", value: new THREE.Color( 0xffffff ) },
+						texture: { type: "t", value: THREE.ImageUtils.loadTexture( "textures/sprites/disc.png" ) }
+					},
+					vertexShader: document.getElementById( 'vertexshader' ).textContent,
+					fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
 
-					} );
+					alphaTest: 0.9,
 
-					mesh = new THREE.Points( geometry, material );
-					scene.add( mesh );
+				} );
 
-					var gui = new dat.GUI();
-					gui.add( material.uniforms.nearClipping, 'value', 1, 10000, 1.0 ).name( 'nearClipping' );
-					gui.add( material.uniforms.farClipping, 'value', 1, 10000, 1.0 ).name( 'farClipping' );
-					gui.add( material.uniforms.pointSize, 'value', 1, 10, 1.0 ).name( 'pointSize' );
-					gui.add( material.uniforms.zOffset, 'value', 0, 4000, 1.0 ).name( 'zOffset' );
-					gui.close();
+				//
 
+				particles = new THREE.Points( geometry, material );
+				scene.add( particles );
 
-				}, false );
-				video.loop = true;
-				video.src = 'textures/kinect.webm';
-				video.play();
+				//
 
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				container.appendChild( renderer.domElement );
 
-				mouse = new THREE.Vector3( 0, 0, 1 );
+				//
 
-				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+				raycaster = new THREE.Raycaster();
+				mouse = new THREE.Vector2();
+
+				//
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				container.appendChild( stats.domElement );
 
 				//
 
 				window.addEventListener( 'resize', onWindowResize, false );
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+			}
+
+			function onDocumentMouseMove( event ) {
+
+				event.preventDefault();
+
+				mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+				mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 
 			}
 
@@ -223,13 +193,6 @@
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
-
-			}
-
-			function onDocumentMouseMove( event ) {
-
-				mouse.x = ( event.clientX - window.innerWidth / 2 ) * 8;
-				mouse.y = ( event.clientY - window.innerHeight / 2 ) * 8;
 
 			}
 
@@ -244,14 +207,43 @@
 
 			function render() {
 
-				camera.position.x += ( mouse.x - camera.position.x ) * 0.05;
-				camera.position.y += ( - mouse.y - camera.position.y ) * 0.05;
-				camera.lookAt( center );
+				particles.rotation.x += 0.0005;
+				particles.rotation.y += 0.001;
+
+				var geometry = particles.geometry;
+				var attributes = geometry.attributes;
+
+				raycaster.setFromCamera( mouse, camera );
+
+				intersects = raycaster.intersectObject( particles );
+
+				if ( intersects.length > 0 ) {
+
+					if ( INTERSECTED != intersects[ 0 ].index ) {
+
+						attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE;
+
+						INTERSECTED = intersects[ 0 ].index;
+
+						attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE * 1.25;
+						attributes.size.needsUpdate = true;
+
+					}
+
+				} else if ( INTERSECTED !== null ) {
+
+					attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE;
+					attributes.size.needsUpdate = true;
+					INTERSECTED = null;
+
+				}
 
 				renderer.render( scene, camera );
 
 			}
 
 		</script>
+
 	</body>
+
 </html>
