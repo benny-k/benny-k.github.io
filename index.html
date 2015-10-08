@@ -1,189 +1,144 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgl - interactive particles</title>
+		<title>three.js webgl - interactive lines</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
 			body {
-				color: #ffffff;
-				background-color: #000000;
+				font-family: Monospace;
+				background-color: #f0f0f0;
 				margin: 0px;
 				overflow: hidden;
 			}
-			#info {
-				position: absolute;
-				top: 0px;
-				width: 100%;
-				padding: 5px;
-				font-family: Monospace;
-				font-size: 13px;
-				text-align: center;
-				font-weight: bold;
-			}
-			a {
-				color: #fff;
-			}
 		</style>
 	</head>
-
 	<body>
-		<div id="container"></div>
-		<div id="info"><a href="http://threejs.org" target="_blank">three.js</a> webgl - interactive - particles</div>
 
 		<script src="three.min.js"></script>
 
-		<script src="Detector.js"></script>
 		<script src="stats.min.js"></script>
-
-		<script type="x-shader/x-vertex" id="vertexshader">
-
-			attribute float size;
-			attribute vec3 customColor;
-
-			varying vec3 vColor;
-
-			void main() {
-
-				vColor = customColor;
-
-				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-
-				gl_PointSize = size * ( 300.0 / length( mvPosition.xyz ) );
-
-				gl_Position = projectionMatrix * mvPosition;
-
-			}
-
-		</script>
-
-		<script type="x-shader/x-fragment" id="fragmentshader">
-
-			uniform vec3 color;
-			uniform sampler2D texture;
-
-			varying vec3 vColor;
-
-			void main() {
-
-				gl_FragColor = vec4( color * vColor, 1.0 );
-
-				gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
-
-				if ( gl_FragColor.a < ALPHATEST ) discard;
-
-			}
-
-		</script>
-
 
 		<script>
 
-			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+			var container, stats;
+			var camera, scene, raycaster, renderer, parentTransform, sphereInter;
 
-			var renderer, scene, camera, stats;
+			var mouse = new THREE.Vector2();
+			var radius = 100, theta = 0;
 
-			var particles, uniforms;
-
-			var PARTICLE_SIZE = 20;
-
-			var raycaster, intersects;
-			var mouse, INTERSECTED;
+			var currentIntersected;
 
 			init();
 			animate();
 
 			function init() {
 
-				container = document.getElementById( 'container' );
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				var info = document.createElement( 'div' );
+				info.style.position = 'absolute';
+				info.style.top = '10px';
+				info.style.width = '100%';
+				info.style.textAlign = 'center';
+				info.innerHTML = '<a href="http://threejs.org" target="_blank">three.js</a> webgl - interactive lines';
+				container.appendChild( info );
+
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 10000 );
 
 				scene = new THREE.Scene();
 
-				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
-				camera.position.z = 250;
+				var geometry = new THREE.SphereGeometry( 5 );
+				var material = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
 
-				//
+				sphereInter = new THREE.Mesh( geometry, material );
+				sphereInter.visible = false;
+				scene.add( sphereInter );
 
-				var geometry1 = new THREE.BoxGeometry( 200, 200, 200, 16, 16, 16 );
-				var vertices = geometry1.vertices;
+				var geometry = new THREE.Geometry();
 
-				var positions = new Float32Array( vertices.length * 3 );
-				var colors = new Float32Array( vertices.length * 3 );
-				var sizes = new Float32Array( vertices.length );
+				var point = new THREE.Vector3();
+				var direction = new THREE.Vector3();
 
-				var vertex;
-				var color = new THREE.Color();
+				for ( var i = 0; i < 50; i ++ ) {
 
-				for ( var i = 0, l = vertices.length; i < l; i ++ ) {
+					direction.x += Math.random() - 0.5;
+					direction.y += Math.random() - 0.5;
+					direction.z += Math.random() - 0.5;
+					direction.normalize().multiplyScalar( 10 );
 
-					vertex = vertices[ i ];
-					vertex.toArray( positions, i * 3 );
+					point.add( direction );
 
-					color.setHSL( 0.01 + 0.1 * ( i / l ), 1.0, 0.5 )
-					color.toArray( colors, i * 3 );
-
-					sizes[ i ] = PARTICLE_SIZE * 0.5;
+					geometry.vertices.push( point.clone() );
 
 				}
 
-				var geometry = new THREE.BufferGeometry();
-				geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
-				geometry.addAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
-				geometry.addAttribute( 'size', new THREE.BufferAttribute( sizes, 1 ) );
+				parentTransform = new THREE.Object3D();
+				parentTransform.position.x = Math.random() * 40 - 20;
+				parentTransform.position.y = Math.random() * 40 - 20;
+				parentTransform.position.z = Math.random() * 40 - 20;
 
-				//
+				parentTransform.rotation.x = Math.random() * 2 * Math.PI;
+				parentTransform.rotation.y = Math.random() * 2 * Math.PI;
+				parentTransform.rotation.z = Math.random() * 2 * Math.PI;
 
-				var material = new THREE.ShaderMaterial( {
+				parentTransform.scale.x = Math.random() + 0.5;
+				parentTransform.scale.y = Math.random() + 0.5;
+				parentTransform.scale.z = Math.random() + 0.5;
 
-					uniforms: {
-						color:   { type: "c", value: new THREE.Color( 0xffffff ) },
-						texture: { type: "t", value: THREE.ImageUtils.loadTexture( "textures/sprites/disc.png" ) }
-					},
-					vertexShader: document.getElementById( 'vertexshader' ).textContent,
-					fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
+				for ( var i = 0; i < 50; i ++ ) {
 
-					alphaTest: 0.9,
+					var object;
 
-				} );
+					if ( Math.random() > 0.5 ) {
 
-				//
+						object = new THREE.Line( geometry );
 
-				particles = new THREE.Points( geometry, material );
-				scene.add( particles );
+					} else {
 
-				//
+						object = new THREE.LineSegments( geometry );
 
-				renderer = new THREE.WebGLRenderer();
-				renderer.setPixelRatio( window.devicePixelRatio );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				container.appendChild( renderer.domElement );
+					}
 
-				//
+					object.position.x = Math.random() * 400 - 200;
+					object.position.y = Math.random() * 400 - 200;
+					object.position.z = Math.random() * 400 - 200;
+
+					object.rotation.x = Math.random() * 2 * Math.PI;
+					object.rotation.y = Math.random() * 2 * Math.PI;
+					object.rotation.z = Math.random() * 2 * Math.PI;
+
+					object.scale.x = Math.random() + 0.5;
+					object.scale.y = Math.random() + 0.5;
+					object.scale.z = Math.random() + 0.5;
+
+					parentTransform.add( object );
+
+				}
+
+				scene.add( parentTransform );
 
 				raycaster = new THREE.Raycaster();
-				mouse = new THREE.Vector2();
+				raycaster.linePrecision = 3;
 
-				//
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setClearColor( 0xf0f0f0 );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild(renderer.domElement);
 
 				stats = new Stats();
 				stats.domElement.style.position = 'absolute';
 				stats.domElement.style.top = '0px';
 				container.appendChild( stats.domElement );
 
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
 				//
 
 				window.addEventListener( 'resize', onWindowResize, false );
-				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
-
-			}
-
-			function onDocumentMouseMove( event ) {
-
-				event.preventDefault();
-
-				mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-				mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 
 			}
 
@@ -196,6 +151,17 @@
 
 			}
 
+			function onDocumentMouseMove( event ) {
+
+				event.preventDefault();
+
+				mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+				mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+			}
+
+			//
+
 			function animate() {
 
 				requestAnimationFrame( animate );
@@ -207,34 +173,46 @@
 
 			function render() {
 
-				particles.rotation.x += 0.0005;
-				particles.rotation.y += 0.001;
+				theta += 0.1;
 
-				var geometry = particles.geometry;
-				var attributes = geometry.attributes;
+				camera.position.x = radius * Math.sin( THREE.Math.degToRad( theta ) );
+				camera.position.y = radius * Math.sin( THREE.Math.degToRad( theta ) );
+				camera.position.z = radius * Math.cos( THREE.Math.degToRad( theta ) );
+				camera.lookAt( scene.position );
+
+				camera.updateMatrixWorld();
+
+				// find intersections
 
 				raycaster.setFromCamera( mouse, camera );
 
-				intersects = raycaster.intersectObject( particles );
+				var intersects = raycaster.intersectObjects( parentTransform.children, true);
 
 				if ( intersects.length > 0 ) {
 
-					if ( INTERSECTED != intersects[ 0 ].index ) {
+					if ( currentIntersected !== undefined ) {
 
-						attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE;
-
-						INTERSECTED = intersects[ 0 ].index;
-
-						attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE * 1.25;
-						attributes.size.needsUpdate = true;
+						currentIntersected.material.linewidth = 1;
 
 					}
 
-				} else if ( INTERSECTED !== null ) {
+					currentIntersected = intersects[ 0 ].object;
+					currentIntersected.material.linewidth = 5;
 
-					attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE;
-					attributes.size.needsUpdate = true;
-					INTERSECTED = null;
+					sphereInter.visible = true;
+					sphereInter.position.copy( intersects[ 0 ].point );
+
+				} else {
+
+					if ( currentIntersected !== undefined ) {
+
+						currentIntersected.material.linewidth = 1;
+
+					}
+
+					currentIntersected = undefined;
+
+					sphereInter.visible = false;
 
 				}
 
@@ -245,5 +223,4 @@
 		</script>
 
 	</body>
-
 </html>
