@@ -41,7 +41,7 @@
 		<script src='dat.gui.min.js'></script>
 
 		<script src="Detector.js"></script>
-		<script src="libs/stats.min.js"></script>
+		<script src="stats.min.js"></script>
 
 		<script id="vs" type="x-shader/x-vertex">
 
